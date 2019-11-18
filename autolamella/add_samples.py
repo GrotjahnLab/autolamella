@@ -146,7 +146,7 @@ def add_single_sample(microscope, settings):
         fiducial_coord_pixels,
         reduced_area_fiducial,
     )
-    my_lamella.reference_image = reference_image
+    my_lamella.reference_image = cropped_reference_image
     my_lamella.set_sem_image(microscope, settings)
     my_lamella.set_custom_milling_depth()
     return my_lamella
