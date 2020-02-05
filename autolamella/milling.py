@@ -1,16 +1,8 @@
 import os
 import logging
+import time
 
 import numpy as np
-
-from autoscript_core.common import ApplicationServerException
-from autoscript_sdb_microscope_client.structures import (
-    GrabFrameSettings,
-    Rectangle,
-    RunAutoCbSettings,
-    Point,
-    StagePosition,
-)
 
 from autolamella.acquire import (
     autocontrast,
@@ -33,6 +25,9 @@ def upper_milling(
     filename_prefix="",
     demo_mode=False,
 ):
+    from autoscript_core.common import ApplicationServerException
+    from autoscript_sdb_microscope_client.structures import StagePosition
+
     # Setup and realign to fiducial marker
     setup_milling(microscope, settings, stage_settings, my_lamella)
     tilt_in_radians = np.deg2rad(stage_settings["overtilt_degrees"])
@@ -42,11 +37,21 @@ def upper_milling(
         settings,
         my_lamella,
         prefix="IB_" + filename_prefix,
-        suffix="_0-unaligned",
+        suffix="_0a-unaligned",
     )
     realign(microscope, image_unaligned, my_lamella.fiducial_image)
-    my_lamella.fiducial_image = grab_images(microscope, settings, my_lamella)
-    grab_images(
+    # Repeat realignment - in cases where the shift is large we find that
+    # the beam shift movement is less accuracte, so we make a second check
+    image_unaligned = grab_images(
+        microscope,
+        settings,
+        my_lamella,
+        prefix="IB_" + filename_prefix,
+        suffix="_0b-unaligned",
+    )
+    realign(microscope, image_unaligned, my_lamella.fiducial_image)
+    # Save the newly aligned image for the next alignment stage
+    my_lamella.fiducial_image = grab_images(
         microscope,
         settings,
         my_lamella,  # can remove
@@ -81,6 +86,9 @@ def lower_milling(
     filename_prefix="",
     demo_mode=False,
 ):
+    from autoscript_core.common import ApplicationServerException
+    from autoscript_sdb_microscope_client.structures import StagePosition
+
     # Setup and realign to fiducial marker
     setup_milling(microscope, settings, stage_settings, my_lamella)
     tilt_in_radians = np.deg2rad(stage_settings["overtilt_degrees"])
@@ -90,9 +98,20 @@ def lower_milling(
         settings,
         my_lamella,
         prefix="IB_" + filename_prefix,
-        suffix="_3-unaligned",
+        suffix="_3a-unaligned",
     )
     realign(microscope, image_unaligned, my_lamella.fiducial_image)
+    # Repeat realignment - in cases where the shift is large we find that
+    # the beam shift movement is less accuracte, so we make a second check
+    image_unaligned = grab_images(
+        microscope,
+        settings,
+        my_lamella,
+        prefix="IB_" + filename_prefix,
+        suffix="_3b-unaligned",
+    )
+    realign(microscope, image_unaligned, my_lamella.fiducial_image)
+    # Save the newly aligned image for the next alignment stage
     my_lamella.fiducial_image = grab_images(microscope, settings, my_lamella)
     grab_images(
         microscope,
@@ -204,8 +223,7 @@ def setup_milling(microscope, settings, stage_settings, my_lamella):
 
 
 def run_drift_corrected_milling(
-    microscope, correction_interval, reduced_area=Rectangle(0, 0, 1, 1)
-):
+    microscope, correction_interval, reduced_area=None):
     """
     Parameters
     ----------
@@ -214,8 +232,15 @@ def run_drift_corrected_milling(
     reduced_area : Autoscript Rectangle() object
         Describes the reduced area view in relative coordinates, with the
         origin in the top left corner.
-        Default value Rectangle(0, 0, 1, 1) uses the whole field of view.
+        Default value is None, which will create a Rectangle(0, 0, 1, 1),
+        which means the imaging will use the whole field of view.
     """
+    from autoscript_core.common import ApplicationServerException
+    from autoscript_sdb_microscope_client.structures import (GrabFrameSettings,
+                                                             Rectangle)
+
+    if reduced_area is None:
+        reduced_area = Rectangle(0, 0, 1, 1)
     s = GrabFrameSettings(reduced_area=reduced_area)
     reference_image = microscope.imaging.grab_frame(s)
     # start drift corrected patterning (is a blocking function, not asynchronous)
